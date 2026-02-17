@@ -22,14 +22,14 @@ const _db = {
 
 export async function addPatient(payload) {
   await sleep()
-  const patient = await postFecthCall('http://localhost:9000/patients/register', payload);
+  const patient = await postFecthCall('http://localhost:8000/patients/register', payload);
   return patient
 }
 
 // Fetch patients
 export async function getPatients() {
   await sleep()
-  return getFecthCall('http://localhost:9000/patients');
+  return getFecthCall('http://localhost:8000/patients');
 }
 
 // Get patient by id (external patient service)
@@ -56,7 +56,7 @@ export async function getPatientById(patientId) {
 
 export async function updatePatient(id, payload) {
   await sleep()
-  const resp = putFecthCall(`http://localhost:9000/patients/update/${id}`, payload);
+  const resp = putFecthCall(`http://localhost:8000/patients/update/${id}`, payload);
   return resp;
 }
 
@@ -376,7 +376,7 @@ export async function addRoom(payload) {
       })) : []
     }
     console.log("addRoom sending body:", body)
-    const resp = await postFecthCall('http://localhost:9001/rooms/addroom', body)
+    const resp = await postFecthCall('http://localhost:8000/rooms/addroom', body)
     // Expect backend to return created room object; normalize if needed
     return resp
   } catch (err) {
@@ -390,7 +390,7 @@ export async function addRoom(payload) {
 export async function updateRoomByNumber(roomNumber, updates) {
   await sleep()
   try {
-    const r = await putFecthCall(`http://localhost:9001/rooms/update-rooms/${roomNumber}`, updates);
+    const r = await putFecthCall(`http://localhost:8000/rooms/update-rooms/${roomNumber}`, updates);
     return r;
   }catch(err) {
     console.warn('updateRoomByNumber remote failed ', err)
@@ -401,7 +401,7 @@ export async function updateRoomByNumber(roomNumber, updates) {
 export async function deleteRoomByNumber(roomNumber) {
   await sleep()
   try {
-    const resp = await deleteFecthCall(`http://localhost:9001/rooms/delete-rooms/${roomNumber}`)
+    const resp = await deleteFecthCall(`http://localhost:8000/rooms/delete-rooms/${roomNumber}`)
     return resp
   } catch (err) {
     console.warn('deleteRoomByNumber remote failed ', err)
@@ -412,7 +412,7 @@ export async function deleteRoomByNumber(roomNumber) {
 export async function getBeds() {
   await sleep()
   try {
-    const beds = await getFecthCall('http://localhost:9001/bed/getBeds');
+    const beds = await getFecthCall('http://localhost:8000/bed/getBeds');
     return beds;
   } catch (err) {
     console.warn('getBeds remote failed', err)
@@ -423,7 +423,7 @@ export async function getBeds() {
 export async function getAllRooms(){
   await sleep()
   try {
-    const rooms = await getFecthCall('http://localhost:9001/rooms/getRooms');
+    const rooms = await getFecthCall('http://localhost:8000/rooms/getRooms');
     return rooms;
   } catch (err) {
     console.warn('getAllRooms remote failed ', err)
@@ -435,7 +435,7 @@ export async function getAllRooms(){
 export async function getStaffs() {
   await sleep()
   try {
-    const resp = await getFecthCall('http://localhost:9002/staff')
+    const resp = await getFecthCall('http://localhost:8000/staff')
     return Array.isArray(resp) ? resp : []
   } catch (err) {
     console.warn('getStaffs remote failed', err)
@@ -447,7 +447,7 @@ export async function addStaff(payload) {
   await sleep()
   try {
     const body = payload
-    const resp = await postFecthCall('http://localhost:9002/staff/register', body)
+    const resp = await postFecthCall('http://localhost:8000/staff/register', body)
     return resp
   } catch (err) {
     console.warn('addStaff remote failed', err)
@@ -460,7 +460,7 @@ export async function addStaff(payload) {
 export async function updateStaff(staffId, updates) {
   await sleep()
   try {
-    const resp = await putFecthCall(`http://localhost:9002/staff/update/${staffId}`, updates)
+    const resp = await putFecthCall(`http://localhost:8000/staff/update/${staffId}`, updates)
     return resp
   } catch (err) {
     console.warn('updateStaff remote failed', err)
@@ -476,7 +476,7 @@ export async function updateStaff(staffId, updates) {
 export async function resignStaff(staffId) {
   await sleep()
   try {
-    const resp = await postFecthCall(`http://localhost:9002/staffs/resign/${staffId}`, {})
+    const resp = await postFecthCall(`http://localhost:8000/staffs/resign/${staffId}`, {})
     return resp
   } catch (err) {
     console.warn('resignStaff remote failed', err)
@@ -491,7 +491,7 @@ export async function resignStaff(staffId) {
 
 export async function addBed(payload) {
   await sleep()
-  const resp = await postFecthCall('http://localhost:9001/bed/addBed', payload);
+  const resp = await postFecthCall('http://localhost:8000/bed/addBed', payload);
   return resp;
 }
 export async function updateBed(id, updates) {
@@ -504,7 +504,7 @@ export async function updateBed(id, updates) {
 export async function assignBed(bedNumber, patientId, by = 'receptionist') {
   await sleep()
   try {
-    const resp = await postFecthCall(`http://localhost:9001/bed/assign/${bedNumber}/${patientId}`)
+    const resp = await postFecthCall(`http://localhost:8000/bed/assign/${bedNumber}/${patientId}`)
     // Normalize response to ensure all necessary fields exist
     if (resp) {
       return {
@@ -549,7 +549,7 @@ export async function vacateBed(roomNumber, bedNumber, by = 'receptionist') {
   await sleep()
   try {
     // Call remote endpoint expecting path variables: roomNumber and bedNumber
-    const resp = await putFecthCall(`http://localhost:9001/bed/vacate-bed/${roomNumber}/${bedNumber}`)
+    const resp = await putFecthCall(`http://localhost:8000/bed/vacate-bed/${roomNumber}/${bedNumber}`)
     if (resp) {
       return {
         id: resp.id || `bed-${resp.bedNumber}`,
@@ -589,7 +589,7 @@ export async function vacateBed(roomNumber, bedNumber, by = 'receptionist') {
 export async function getBedHistory(bedId) {
   await sleep()
   try {
-    const history = await getFecthCall(`http://localhost:9001/bed/bed-history/${bedId}`)
+    const history = await getFecthCall(`http://localhost:8000/bed/bed-history/${bedId}`)
     return Array.isArray(history) ? history : []
   } catch (err) {
     console.warn('getBedHistory remote failed', err)
@@ -602,7 +602,7 @@ export async function getBedHistory(bedId) {
 export async function deleteBed(bedNumber, roomNumber) {
   await sleep()
   try {
-    const resp = await deleteFecthCall(`http://localhost:9001/bed/delete-bed/${bedNumber}/${roomNumber}`)
+    const resp = await deleteFecthCall(`http://localhost:8000/bed/delete-bed/${bedNumber}/${roomNumber}`)
     return resp
   } catch (err) {
     console.warn('deleteBed remote failed', err)
