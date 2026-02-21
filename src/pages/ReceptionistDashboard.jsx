@@ -245,7 +245,7 @@ export default function ReceptionistDashboard() {
 
     const payload = {
       "patientName": patientName,
-      "gender": gender,
+      "gender": (typeof gender === 'string' ? gender.toUpperCase() : gender),
       "patientEmail": patientEmail,
       "patientPhoneNumber": patientPhoneNumber,
       "dateOfBirth": dateOfBirth,
