@@ -608,16 +608,38 @@ export default function ReceptionistDashboard() {
       // roomId: prefer actual DB id if available, otherwise use roomNumber
       const payload = { bedNumber: Number(newBedNumber), roomNumber: selRoom.id || Number(newBedRoomId), occupied: false }
       if (typeof api.addBed === 'function') created = await api.addBed(payload)
+
+      // If backend returns an error-shaped response (common patterns), show message and abort
+      if (created && (created.success === false || created.status === 400 || created.status === 409 || (created.message && !created.id && !created.number && !created.bedNumber))) {
+        const msg = (created && (created.message || created.error)) || 'Unable to add bed: server returned an error'
+        alert(msg)
+        return
+      }
+
       if (!created) created = { id: Date.now(), history: [], ...payload }
-      setBeds((prev) => [created, ...prev])
+
+      // Normalize created bed object so UI never receives undefined fields
+      const normalized = {
+        id: created.id || created.bedId || `bed-${Date.now()}`,
+        number: created.number || created.bedNumber || Number(newBedNumber),
+        bedNumber: created.bedNumber || created.number || Number(newBedNumber),
+        roomNumber: created.roomNumber || selRoom.roomNumber || selRoom.number || Number(newBedRoomId),
+        roomId: created.roomId || selRoom.id,
+        available: created.available !== undefined ? created.available : (created.occupied !== undefined ? !created.occupied : true),
+        occupied: created.occupied !== undefined ? created.occupied : !(created.available !== undefined ? created.available : false),
+        history: created.history || []
+      }
+
+      setBeds((prev) => [normalized, ...prev])
       // also add to room's beds list in UI state (match by roomNumber)
-      setRooms((prev) => prev.map((r) => (String(r.roomNumber || r.number) === String(newBedRoomId)) ? { ...r, beds: [...(r.beds||[]), { number: created.number, available: created.available }] } : r))
+      setRooms((prev) => prev.map((r) => (String(r.roomNumber || r.number) === String(newBedRoomId)) ? { ...r, beds: [...(r.beds||[]), { id: normalized.id, number: normalized.number, available: normalized.available }] } : r))
       setNewBedNumber('')
       setNewBedRoomId('')
       setShowAddBed(false)
     } catch (err) {
       console.warn('addBed failed', err)
-      alert('Unable to add bed')
+      const msg = err?.response?.data || err?.message || 'Unable to add bed'
+      alert(msg)
     }
   }
 
