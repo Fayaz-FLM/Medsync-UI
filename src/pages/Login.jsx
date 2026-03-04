@@ -1,15 +1,12 @@
 import React, { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-// import * as api from '../services/api' // uncomment to call backend
 
 export default function Login() {
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState('receptionist') // demo selector; backend will provide real roles
   const { login, loading } = useAuth()
   const nav = useNavigate()
-  const location = useLocation()
   const [error, setError] = useState(null)
 
   async function onSubmit(e) {
@@ -17,7 +14,7 @@ export default function Login() {
     setError(null)
     try {
       // login should return user object: { username, roles: [...] } or { username, role }
-      const user = await login({ username: username.trim(), role, password })
+      const user = await login({ email: email.trim(), password })
       const roles = user?.roles || (user?.role ? [user.role] : [])
       const rolesNorm = Array.isArray(roles) ? roles.map((r) => (typeof r === 'string' ? r.trim().toLowerCase() : r)) : []
 
@@ -53,11 +50,12 @@ export default function Login() {
                 <h4 className="mb-4 text-center">MedSync — Sign in</h4>
                 <form onSubmit={onSubmit}>
                   <div className="mb-3">
-                    <label className="form-label">Username</label>
+                    <label className="form-label">Email</label>
                     <input
                       className="form-control"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
                       required
                       disabled={loading}
                     />
@@ -75,24 +73,21 @@ export default function Login() {
                     />
                   </div>
 
-                  <div className="mb-3">
-                    <label className="form-label">Role (for demo)</label>
-                    <select
-                      className="form-select"
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
+                  <div className="mb-3 text-end">
+                    <button
+                      type="button"
+                      className="btn btn-link p-0"
                       disabled={loading}
+                      onClick={() => nav('/forgot-password')}
                     >
-                      <option value="receptionist">Receptionist</option>
-                      <option value="admin">Admin</option>
-                      <option value="doctor">Doctor</option>
-                    </select>
+                      Forgot password?
+                    </button>
                   </div>
 
                   {error && <div className="alert alert-danger">{error}</div>}
 
                   <div className="d-grid">
-                    <button className="btn btn-primary" type="submit" disabled={loading || !username || !password}>
+                    <button className="btn btn-primary" type="submit" disabled={loading || !email || !password}>
                       {loading ? 'Signing in...' : 'Sign in'}
                     </button>
                   </div>

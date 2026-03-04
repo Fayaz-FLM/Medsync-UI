@@ -7,6 +7,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import NavBar from './components/NavBar'
 import Login from './pages/Login'
 import Home from './pages/Home'
+import ForgotPassword from './pages/ForgotPassword'
 import ReceptionistDashboard from './pages/ReceptionistDashboard'
 import DoctorDashboard from './pages/DoctorDashboard'
 import AdminDashboard from './pages/AdminDashboard'
@@ -24,6 +25,7 @@ export default function App() {
             <div className="container py-4 h-100">
               <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
 
                 <Route
                   path="/"
