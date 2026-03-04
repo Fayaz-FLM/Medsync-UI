@@ -1045,8 +1045,8 @@ export default function ReceptionistDashboard() {
                   loading={loadingAppointments}
                   onView={async (a) => {
                     try {
-                      const id = a.patientId || a.id
-                      const resp = await api.getAppointmentDetails(id)
+                      const appointmentId = a.appointmentId || a.id
+                      const resp = await api.getAppointmentDetails(appointmentId)
                       if (resp && resp.status === 200 && resp.data) {
                         setSelectedPatient(resp.data)
                         setSelectedPatientEditable(false)

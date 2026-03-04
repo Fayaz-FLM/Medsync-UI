@@ -109,8 +109,8 @@ export default function AppointmentManagement({ doctors = [] }) {
     console.log('Viewing appointment');
     try {
       setError('')
-      const id = a.patientId;
-      const resp = await api.getAppointmentDetails(id)
+      const appointmentId = a.appointmentId || a.id;
+      const resp = await api.getAppointmentDetails(appointmentId)
       if (resp && resp.status === 200 && resp.data) {
         setSelectedAppointment(resp.data)
         setShowRescheduleModal(false)
