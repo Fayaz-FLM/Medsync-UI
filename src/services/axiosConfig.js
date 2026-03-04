@@ -1,9 +1,17 @@
 import axios from 'axios';
 
-// Prefer environment variable if provided (see INTEGRATION_SETUP.md)
-const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL)
+// Determine API base URL in a way that avoids CORS during local development.
+// - In dev (Vite), if VITE_API_BASE_URL is not set, we use '/api' so calls go
+//   through the Vite proxy (see vite.config.js) and never leave the origin.
+// - In other environments, fall back to explicit gateway URL.
+let API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL)
   ? import.meta.env.VITE_API_BASE_URL
-  : 'http://localhost:8000';
+  : null;
+
+if (!API_BASE_URL) {
+  const isDev = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV;
+  API_BASE_URL = isDev ? '/api' : 'http://localhost:8000';
+}
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
