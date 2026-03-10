@@ -9,6 +9,12 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   // while auth state is being restored, avoid redirecting immediately
   if (loading) return null // or show a spinner
 
+  // Check if user needs to reset password
+  const resetEmail = sessionStorage.getItem('resetEmail')
+  if (resetEmail && location.pathname !== '/force-reset-password') {
+    return <Navigate to="/force-reset-password" replace />
+  }
+
   if (!user) {
     // not logged in — send to login and preserve attempted location
     return <Navigate to="/login" replace state={{ from: location }} />

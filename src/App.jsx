@@ -8,6 +8,7 @@ import NavBar from './components/NavBar'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import ForgotPassword from './pages/ForgotPassword'
+import ForceResetPassword from './pages/ForceResetPassword'
 import ReceptionistDashboard from './pages/ReceptionistDashboard'
 import DoctorDashboard from './pages/DoctorDashboard'
 import AdminDashboard from './pages/AdminDashboard'
@@ -26,6 +27,7 @@ export default function App() {
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/force-reset-password" element={<ForceResetPassword />} />
 
                 <Route
                   path="/"

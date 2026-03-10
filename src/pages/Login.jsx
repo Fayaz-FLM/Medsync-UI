@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Login() {
@@ -7,14 +7,30 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const { login, loading } = useAuth()
   const nav = useNavigate()
+  const location = useLocation()
   const [error, setError] = useState(null)
+  const [successMessage, setSuccessMessage] = useState(location.state?.message || null)
 
   async function onSubmit(e) {
     e.preventDefault()
     setError(null)
+    setSuccessMessage(null)
     try {
       // login should return user object: { username, roles: [...] } or { username, role }
       const user = await login({ email: email.trim(), password })
+      
+      // Check if password reset is required
+      if (user?.requirePasswordReset) {
+        nav('/force-reset-password', { 
+          replace: true,
+          state: { 
+            email: user.email,
+            message: 'For security reasons, you must reset your temporary password before continuing.'
+          }
+        })
+        return
+      }
+
       const roles = user?.roles || (user?.role ? [user.role] : [])
       const rolesNorm = Array.isArray(roles) ? roles.map((r) => (typeof r === 'string' ? r.trim().toLowerCase() : r)) : []
 
@@ -84,6 +100,7 @@ export default function Login() {
                     </button>
                   </div>
 
+                  {successMessage && <div className="alert alert-success">{successMessage}</div>}
                   {error && <div className="alert alert-danger">{error}</div>}
 
                   <div className="d-grid">

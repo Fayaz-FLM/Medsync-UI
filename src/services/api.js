@@ -62,7 +62,8 @@ export async function bookAppointment(payload) {
       appointmentDate: payload.appointmentDate,
       startTime: payload.startTime,
       endTime: payload.endTime,
-      notes: payload.notes || ''
+      notes: payload.notes || '',
+      reasonForVisit: payload.reasonForVisit
     });
     return {
       data: response.data,
@@ -106,7 +107,7 @@ export async function rescheduleAppointment(appointmentId, updates) {
       newStartTime: updates.startTime,
       newEndTime: updates.endTime
     };
-    const response = await axiosInstance.put(`/appointments/reScheduleAppointment${appointmentId}/`, body);
+    const response = await axiosInstance.put(`/appointments/reScheduleAppointment/${appointmentId}`, body);
     return {
       data: response.data,
       status: 200,
@@ -199,8 +200,19 @@ export async function getAppointmentsForDoctor(doctorId, date) {
     console.warn('getAppointmentsForDoctor failed', err);
     const status = err.response?.status;
     const errorMsg = err.response?.data || err.message;
+    
+    // 404 means no appointments found - not an error
+    if (status === 404) {
+      return {
+        data: [],
+        status: 404,
+        success: true,
+        message: 'No appointments found for this date'
+      };
+    }
+    
     return {
-      data: null,
+      data: [],
       status: status || 500,
       success: false,
       message: errorMsg || 'Failed to fetch appointments for doctor'
@@ -229,6 +241,19 @@ export async function getAppointmentsForAllDoctors(date) {
   }
 }
 
+// Alias for backward compatibility
+export const getAllAppointmentsForAllDoctors = getAppointmentsForAllDoctors;
+
+export async function generateDietPlanApi(appointmentId) {
+  try {
+    const response = await axiosInstance.post(`/appointments/generateDietPlan/${appointmentId}`);
+    return response.data;
+  } catch (err) {
+    console.warn('generateDietPlanApi failed', err);
+    throw err;
+  }
+}
+
 export async function getPatientsVisitedByDoctor(doctorId, startDate, endDate) {
   try {
     const response = await axiosInstance.get(
@@ -252,19 +277,38 @@ export async function getPatientsVisitedByDoctor(doctorId, startDate, endDate) {
   }
 }
 
+export async function submitDiagnosis(appointmentId, formData) {
+  try {
+    const response = await axiosInstance.post(`/appointments/submitDiagnosis/${appointmentId}`, formData);
+    return {
+      data: response.data,
+      status: 200,
+      success: true
+    };
+  } catch (err) {
+    console.warn('submitDiagnosis failed', err);
+    const status = err.response?.status;
+    const errorMsg = err.response?.data?.message || err.message;
+    throw { response: { data: { message: errorMsg } } }; // Throwing in a format DiagnosisModal expects
+  }
+}
+
 // ============= DOCTOR SCHEDULE MANAGEMENT =============
 export async function markDoctorAvailable(staffId, dates) {
   try {
     const response = await axiosInstance.post(`/doctorSchedule/markavailable?staffId=${staffId}`, dates);
     return {
       data: response.data,
-      status: 201,
-      success: true
+      status: response.status,
+      success: true,
+      message: response.data
     };
   } catch (err) {
     console.warn('markDoctorAvailable failed', err);
     const status = err.response?.status;
-    const errorMsg = err.response?.data || err.message;
+    const errorMsg = typeof err.response?.data === 'string' 
+      ? err.response.data 
+      : err.response?.data?.message || err.message;
     return {
       data: null,
       status: status || 500,
@@ -279,18 +323,41 @@ export async function markDoctorUnavailable(doctorId, listOfUnavailableDates) {
     const response = await axiosInstance.post(`/doctorSchedule/${doctorId}/unavailable`, listOfUnavailableDates);
     return {
       data: response.data,
-      status: 201,
-      success: true
+      status: response.status,
+      success: true,
+      message: `Marked unavailable for ${response.data?.length || listOfUnavailableDates.length} date(s)`
     };
   } catch (err) {
     console.warn('markDoctorUnavailable failed', err);
     const status = err.response?.status;
-    const errorMsg = err.response?.data || err.message;
+    const errorMsg = typeof err.response?.data === 'string' 
+      ? err.response.data 
+      : err.response?.data?.message || err.message;
     return {
       data: null,
       status: status || 500,
       success: false,
       message: errorMsg || 'Failed to mark doctor as unavailable'
+    };
+  }
+}
+
+export async function getDoctorUnavailableDates(staffId) {
+  try {
+    const response = await axiosInstance.get(`/doctorSchedule/${staffId}/unavailable-dates`);
+    return {
+      data: Array.isArray(response.data) ? response.data : [],
+      status: response.status,
+      success: true
+    };
+  } catch (err) {
+    console.warn('getDoctorUnavailableDates failed', err);
+    // Return empty array instead of error - doctor might not have any unavailable dates
+    return {
+      data: [],
+      status: err.response?.status || 500,
+      success: true, // Changed to true so it doesn't show as error
+      message: err.response?.data || err.message
     };
   }
 }
@@ -415,15 +482,16 @@ export async function assignBed(bedNumber, patientId) {
     const response = await axiosInstance.post(`/bed/assign/${bedNumber}/${patientId}`);
     const resp = response.data;
     return {
-      id: resp.id || `bed-${resp.bedNumber}`,
-      number: resp.number || resp.bedNumber,
+      id: resp.bedNumber,
+      number: resp.bedNumber,
       bedNumber: resp.bedNumber,
       roomNumber: resp.roomNumber,
-      roomId: resp.roomId,
-      available: resp.available !== undefined ? resp.available : (resp.occupied !== undefined ? !resp.occupied : false),
-      occupied: resp.occupied !== undefined ? resp.occupied : true,
-      patientId: resp.patientId || patientId,
-      history: resp.history || []
+      roomId: resp.roomNumber,
+      available: !resp.isOccupied,
+      occupied: resp.isOccupied,
+      isOccupied: resp.isOccupied,
+      patientId: patientId,
+      history: []
     };
   } catch (err) {
     console.warn('assignBed failed', err);
@@ -436,19 +504,18 @@ export async function vacateBed(roomNumber, bedNumber) {
   try {
     const response = await axiosInstance.put(`/bed/vacate-bed/${roomNumber}/${bedNumber}`);
     const resp = response.data;
-    if (resp) {
-      return {
-        id: resp.id || `bed-${resp.bedNumber}`,
-        number: resp.number || resp.bedNumber || bedNumber,
-        bedNumber: resp.bedNumber || resp.number || bedNumber,
-        roomNumber: resp.roomNumber || roomNumber,
-        roomId: resp.roomId,
-        available: resp.available !== undefined ? resp.available : (resp.occupied !== undefined ? !resp.occupied : true),
-        occupied: resp.occupied !== undefined ? resp.occupied : false,
-        history: resp.history || []
-      };
-    }
-    return resp;
+    return {
+      id: resp.bedNumber,
+      number: resp.bedNumber,
+      bedNumber: resp.bedNumber,
+      roomNumber: resp.roomNumber,
+      roomId: resp.roomNumber,
+      available: !resp.isOccupied,
+      occupied: resp.isOccupied,
+      isOccupied: resp.isOccupied,
+      patientId: 0,
+      history: []
+    };
   } catch (err) {
     console.warn('vacateBed failed', err);
     throw err;

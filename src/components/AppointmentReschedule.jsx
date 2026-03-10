@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import * as api from '../services/api'
+import { formatDateToDisplay, formatDateWithDay, getTodayISO } from '../utils/dateUtils'
 
 export default function AppointmentReschedule({
   appointment,
@@ -12,6 +13,7 @@ export default function AppointmentReschedule({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+  
   const [formData, setFormData] = useState({
     appointmentDate: appointment?.appointmentDate || '',
     startTime: appointment?.startTime || '',
@@ -20,6 +22,67 @@ export default function AppointmentReschedule({
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [unavailableDates, setUnavailableDates] = useState([])
+  const [loadingAvailability, setLoadingAvailability] = useState(false)
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
+  const [availabilityMessage, setAvailabilityMessage] = useState('')
+
+  // Load doctor unavailability on mount
+  useEffect(() => {
+    if (appointment?.doctorId) {
+      loadDoctorUnavailability(appointment.doctorId)
+    }
+  }, [appointment?.doctorId])
+
+  // Check availability when date changes
+  useEffect(() => {
+    if (appointment?.doctorId && formData.appointmentDate) {
+      checkDateAvailability(appointment.doctorId, formData.appointmentDate)
+    } else {
+      setAvailabilityMessage('')
+    }
+  }, [formData.appointmentDate, appointment?.doctorId])
+
+  async function loadDoctorUnavailability(doctorId) {
+    setLoadingAvailability(true)
+    try {
+      const result = await api.getDoctorUnavailableDates(doctorId)
+      if (result.success && Array.isArray(result.data)) {
+        setUnavailableDates(result.data)
+      } else {
+        setUnavailableDates([])
+      }
+    } catch (err) {
+      console.warn('Failed to load doctor unavailability', err)
+      setUnavailableDates([])
+    } finally {
+      setLoadingAvailability(false)
+    }
+  }
+
+  async function checkDateAvailability(doctorId, date) {
+    setCheckingAvailability(true)
+    setAvailabilityMessage('')
+    try {
+      const result = await api.isDoctorAvailable(doctorId, date)
+      if (result.success) {
+        if (result.data === true) {
+          setAvailabilityMessage('✓ Doctor is available on this date')
+        } else {
+          setAvailabilityMessage('✗ Doctor is not available on this date')
+          setError('Doctor is not available on the selected date. Please choose another date.')
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to check availability', err)
+    } finally {
+      setCheckingAvailability(false)
+    }
+  }
+
+  const isDateUnavailable = (date) => {
+    return unavailableDates.includes(date)
+  }
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -50,6 +113,12 @@ export default function AppointmentReschedule({
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validateForm()) return
+
+    // Final availability check
+    if (isDateUnavailable(formData.appointmentDate)) {
+      setError('Doctor is not available on the selected date')
+      return
+    }
 
     setLoading(true)
     try {
@@ -86,13 +155,65 @@ export default function AppointmentReschedule({
           <div className="mb-3 p-3 bg-light rounded">
             <p className="mb-1"><strong>Patient:</strong> {appointment?.patientName || 'N/A'}</p>
             <p className="mb-1"><strong>Doctor:</strong> {appointment?.doctorName || 'N/A'}</p>
-            <p className="mb-0"><strong>Current Appointment:</strong> {appointment?.appointmentDate} {appointment?.startTime} - {appointment?.endTime}</p>
+            <p className="mb-0">
+              <strong>Current Appointment:</strong> {formatDateWithDay(appointment?.appointmentDate)} at {appointment?.startTime} - {appointment?.endTime}
+            </p>
           </div>
+
+          {/* Show unavailable dates */}
+          {loadingAvailability && (
+            <div className="alert alert-info">
+              <span className="spinner-border spinner-border-sm me-2"></span>
+              Loading doctor availability...
+            </div>
+          )}
+
+          {!loadingAvailability && unavailableDates.length > 0 && (
+            <div className="alert alert-warning mb-3">
+              <strong>Doctor Unavailable Dates:</strong>
+              <div className="d-flex flex-wrap gap-2 mt-2">
+                {unavailableDates.slice(0, 10).map((date) => (
+                  <span key={date} className="badge bg-danger">
+                    {formatDateWithDay(date)}
+                  </span>
+                ))}
+                {unavailableDates.length > 10 && (
+                  <span className="badge bg-secondary">
+                    +{unavailableDates.length - 10} more
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
               <label className="form-label">New Appointment Date</label>
-              <input type="date" className="form-control" name="appointmentDate" value={formData.appointmentDate} onChange={handleInputChange} disabled={loading} min={new Date().toISOString().split('T')[0]} />
+              <input 
+                type="date" 
+                className={`form-control ${isDateUnavailable(formData.appointmentDate) ? 'is-invalid' : ''}`}
+                name="appointmentDate" 
+                value={formData.appointmentDate} 
+                onChange={handleInputChange} 
+                disabled={loading} 
+                min={getTodayISO()} 
+              />
+              {checkingAvailability && (
+                <small className="form-text text-muted">
+                  <span className="spinner-border spinner-border-sm me-1"></span>
+                  Checking availability...
+                </small>
+              )}
+              {availabilityMessage && !checkingAvailability && (
+                <small className={`form-text ${availabilityMessage.startsWith('✓') ? 'text-success' : 'text-danger'}`}>
+                  {availabilityMessage}
+                </small>
+              )}
+              {isDateUnavailable(formData.appointmentDate) && (
+                <div className="invalid-feedback d-block">
+                  Doctor is not available on this date
+                </div>
+              )}
             </div>
 
             <div className="row">

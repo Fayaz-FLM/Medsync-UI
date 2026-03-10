@@ -4,20 +4,9 @@ import * as api from '../services/api'
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  // initialize user synchronously from localStorage so a full page reload doesn't
-  // briefly set `user` to null and cause ProtectedRoute to redirect to /login
-  const [user, setUser] = useState(() => {
-    try {
-      const raw = localStorage.getItem('ms_auth')
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        return parsed?.user || null
-      }
-    } catch (e) {
-      // ignore
-    }
-    return null
-  }) // { username, roles: ['receptionist','doctor'] } or { username, role }
+  // Don't auto-login from localStorage - always start with null user
+  // User must explicitly login each time
+  const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(false)
 
   async function login(credentials) {
@@ -33,6 +22,16 @@ export function AuthProvider({ children }) {
       const loginResponse = await api.login(payload)
       if (!loginResponse?.token || !loginResponse?.staffId) {
         throw new Error('Invalid login response')
+      }
+
+      // Check if password reset is required
+      if (loginResponse.requirePasswordReset) {
+        // Store minimal info for password reset flow
+        sessionStorage.setItem('resetEmail', payload.email)
+        sessionStorage.setItem('tempToken', loginResponse.token)
+        setLoading(false)
+        // Return special flag to indicate password reset needed
+        return { requirePasswordReset: true, email: payload.email }
       }
 
       // Store token for axios interceptors

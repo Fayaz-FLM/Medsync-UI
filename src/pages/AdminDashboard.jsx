@@ -141,7 +141,20 @@ export default function AdminDashboard() {
 
         <div className="row mb-3">
           <div className="col-md-4">
-            <input className="form-control" placeholder="Search by name or id" value={filters.q} onChange={(e) => setFilters(f => ({ ...f, q: e.target.value }))} />
+            <input 
+              className="form-control" 
+              placeholder="Search by name or id" 
+              value={filters.q} 
+              onChange={(e) => setFilters(f => ({ ...f, q: e.target.value }))}
+              autoComplete="off"
+              type="text"
+              name="staff-search"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                }
+              }}
+            />
           </div>
           <div className="col-md-3">
             <select className="form-select" value={filters.staffType} onChange={(e) => setFilters(f => ({ ...f, staffType: e.target.value }))}>
@@ -217,7 +230,7 @@ export default function AdminDashboard() {
                       <option value="PEDIATRICIAN">PEDIATRICIAN</option>
                       <option value="GYNECOLOGIST">GYNECOLOGIST</option>
                       <option value="RECEPTIONIST">RECEPTIONIST</option>
-                      <option value="OTHER">OTHER</option>
+                      <option value="OTHERS">OTHERS</option>
                     </select>
                   </div>
                   <div className="col-md-3"><label className="form-label">Experience (yrs)</label><input type="number" className="form-control" value={form.experienceInYears} onChange={(e)=>setForm(f=>({...f, experienceInYears: Number(e.target.value)}))} required /></div>

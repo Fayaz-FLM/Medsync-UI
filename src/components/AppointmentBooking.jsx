@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import * as api from '../services/api'
+import { formatDateWithDay, getTodayISO } from '../utils/dateUtils'
 
 export default function AppointmentBooking({ onClose, onSuccess, doctors = [] }) {
   const [formData, setFormData] = useState({
@@ -9,14 +10,79 @@ export default function AppointmentBooking({ onClose, onSuccess, doctors = [] })
     startTime: '',
     endTime: '',
     notes: '',
+    reasonForVisit: '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [unavailableDates, setUnavailableDates] = useState([])
+  const [loadingAvailability, setLoadingAvailability] = useState(false)
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
+  const [availabilityMessage, setAvailabilityMessage] = useState('')
+
+  // Load unavailable dates when doctor is selected
+  useEffect(() => {
+    if (formData.doctorId) {
+      loadDoctorUnavailability(formData.doctorId)
+    } else {
+      setUnavailableDates([])
+      setAvailabilityMessage('')
+    }
+  }, [formData.doctorId])
+
+  // Check availability when date is selected
+  useEffect(() => {
+    if (formData.doctorId && formData.appointmentDate) {
+      checkDateAvailability(formData.doctorId, formData.appointmentDate)
+    } else {
+      setAvailabilityMessage('')
+    }
+  }, [formData.doctorId, formData.appointmentDate])
+
+  async function loadDoctorUnavailability(doctorId) {
+    setLoadingAvailability(true)
+    try {
+      const result = await api.getDoctorUnavailableDates(doctorId)
+      if (result.success && Array.isArray(result.data)) {
+        setUnavailableDates(result.data)
+      } else {
+        setUnavailableDates([])
+      }
+    } catch (err) {
+      console.warn('Failed to load doctor unavailability', err)
+      setUnavailableDates([])
+    } finally {
+      setLoadingAvailability(false)
+    }
+  }
+
+  async function checkDateAvailability(doctorId, date) {
+    setCheckingAvailability(true)
+    setAvailabilityMessage('')
+    try {
+      const result = await api.isDoctorAvailable(doctorId, date)
+      if (result.success) {
+        if (result.data === true) {
+          setAvailabilityMessage('✓ Doctor is available on this date')
+        } else {
+          setAvailabilityMessage('✗ Doctor is not available on this date')
+          setError('Doctor is not available on the selected date. Please choose another date.')
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to check availability', err)
+    } finally {
+      setCheckingAvailability(false)
+    }
+  }
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
     setError('')
+  }
+
+  const isDateUnavailable = (date) => {
+    return unavailableDates.includes(date)
   }
 
   const validateForm = () => {
@@ -44,6 +110,10 @@ export default function AppointmentBooking({ onClose, onSuccess, doctors = [] })
       setError('End time must be after start time')
       return false
     }
+    if (!formData.reasonForVisit || formData.reasonForVisit.trim() === '') {
+      setError('Please provide a reason for visit')
+      return false
+    }
     return true
   }
 
@@ -51,12 +121,18 @@ export default function AppointmentBooking({ onClose, onSuccess, doctors = [] })
     e.preventDefault()
     if (!validateForm()) return
 
+    // Final availability check
+    if (isDateUnavailable(formData.appointmentDate)) {
+      setError('Doctor is not available on the selected date')
+      return
+    }
+
     setLoading(true)
     try {
       const result = await api.bookAppointment(formData)
       setLoading(false)
-      if (result) {
-        onSuccess?.(result)
+      if (result.success) {
+        onSuccess?.(result.data)
         setFormData({
           patientId: '',
           doctorId: '',
@@ -64,8 +140,11 @@ export default function AppointmentBooking({ onClose, onSuccess, doctors = [] })
           startTime: '',
           endTime: '',
           notes: '',
+          reasonForVisit: '',
         })
         onClose?.()
+      } else {
+        setError(result.message || 'Failed to book appointment')
       }
     } catch (err) {
       setLoading(false)
@@ -115,23 +194,69 @@ export default function AppointmentBooking({ onClose, onSuccess, doctors = [] })
                     <option value="">Select a doctor</option>
                     {doctors.map((d) => (
                       <option key={d.staffId || d.id} value={d.staffId || d.id}>
-                        {d.firstName || d.name} {d.lastName || ''} (ID: {d.staffId || d.id})
+                        {d.firstName || d.name} {d.lastName || ''} - {d.specialization || 'General'} (ID: {d.staffId || d.id})
                       </option>
                     ))}
                   </select>
+                  {loadingAvailability && (
+                    <small className="form-text text-muted">
+                      <span className="spinner-border spinner-border-sm me-1"></span>
+                      Loading doctor availability...
+                    </small>
+                  )}
                 </div>
+
+                {/* Show unavailable dates for selected doctor */}
+                {formData.doctorId && unavailableDates.length > 0 && (
+                  <div className="alert alert-warning mb-3">
+                    <strong>Doctor Unavailable Dates:</strong>
+                    <div className="d-flex flex-wrap gap-2 mt-2">
+                      {unavailableDates.slice(0, 10).map((date) => (
+                        <span key={date} className="badge bg-danger">
+                          {formatDateWithDay(date)}
+                        </span>
+                      ))}
+                      {unavailableDates.length > 10 && (
+                        <span className="badge bg-secondary">
+                          +{unavailableDates.length - 10} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mb-3">
                   <label className="form-label">Appointment Date</label>
                   <input
                     type="date"
-                    className="form-control"
+                    className={`form-control ${isDateUnavailable(formData.appointmentDate) ? 'is-invalid' : ''}`}
                     name="appointmentDate"
                     value={formData.appointmentDate}
                     onChange={handleInputChange}
-                    disabled={loading}
-                    min={new Date().toISOString().split('T')[0]}
+                    disabled={loading || !formData.doctorId}
+                    min={getTodayISO()}
                   />
+                  {!formData.doctorId && (
+                    <small className="form-text text-muted">
+                      Please select a doctor first
+                    </small>
+                  )}
+                  {checkingAvailability && (
+                    <small className="form-text text-muted">
+                      <span className="spinner-border spinner-border-sm me-1"></span>
+                      Checking availability...
+                    </small>
+                  )}
+                  {availabilityMessage && !checkingAvailability && (
+                    <small className={`form-text ${availabilityMessage.startsWith('✓') ? 'text-success' : 'text-danger'}`}>
+                      {availabilityMessage}
+                    </small>
+                  )}
+                  {isDateUnavailable(formData.appointmentDate) && (
+                    <div className="invalid-feedback d-block">
+                      Doctor is not available on this date
+                    </div>
+                  )}
                 </div>
 
                 <div className="row">
@@ -157,6 +282,23 @@ export default function AppointmentBooking({ onClose, onSuccess, doctors = [] })
                       disabled={loading}
                     />
                   </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">Reason for Visit <span className="text-danger">*</span></label>
+                  <textarea
+                    className="form-control"
+                    name="reasonForVisit"
+                    value={formData.reasonForVisit}
+                    onChange={handleInputChange}
+                    rows="3"
+                    placeholder="e.g., Fever and cough, Follow-up consultation, Routine checkup, etc."
+                    disabled={loading}
+                    required
+                  ></textarea>
+                  <small className="form-text text-muted">
+                    This helps the doctor prepare for your consultation
+                  </small>
                 </div>
 
                 <div className="mb-3">
