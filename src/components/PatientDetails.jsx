@@ -10,11 +10,16 @@ export default function PatientDetails({ appointment, onClose }) {
     const fetchPatientDetails = async () => {
       try {
         setLoading(true)
+        setError('')
         // Try to load patient details from patients service
-        const patientId = appointment?.patientId || appointment?.patientId
+        const patientId = appointment?.patientId
         if (patientId && typeof api.getPatientById === 'function') {
           const resp = await api.getPatientById(patientId)
-          if (resp && resp.status === 200 && resp.data) {
+          if (resp && resp.success && resp.data) {
+            setPatientDetails(resp.data)
+            setLoading(false)
+            return
+          } else if (resp && resp.status === 200 && resp.data) {
             setPatientDetails(resp.data)
             setLoading(false)
             return
@@ -36,8 +41,23 @@ export default function PatientDetails({ appointment, onClose }) {
         })
         setLoading(false)
       } catch (err) {
+        console.warn('Failed to load patient details, using appointment data:', err)
+        // Use appointment data as fallback
+        setPatientDetails({
+          patientId: appointment?.patientId,
+          patientName: appointment?.patientName,
+          email: appointment?.email || 'N/A',
+          phone: appointment?.phone || 'N/A',
+          dateOfBirth: appointment?.dateOfBirth || 'N/A',
+          gender: appointment?.gender || 'N/A',
+          address: appointment?.address || 'N/A',
+          city: appointment?.patientAddress?.city || 'N/A',
+          state: appointment?.patientAddress?.state || 'N/A',
+          country: appointment?.patientAddress?.country || 'N/A',
+          pinCode: appointment?.patientAddress?.pinCode || 'N/A',
+        })
         setLoading(false)
-        setError(err.message || 'Failed to load patient details')
+        setError('')
       }
     }
 
@@ -103,6 +123,26 @@ export default function PatientDetails({ appointment, onClose }) {
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 12, color: '#6c757d' }}>Gender</div>
                 <div>{patientDetails.gender || (patientDetails.sex ? String(patientDetails.sex) : '—')}</div>
+              </div>
+
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f1f1' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Appointment Details</div>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: '#6c757d' }}>Appointment Date & Time</div>
+                  <div>{appointment?.appointmentDate || '—'} • {appointment?.startTime || '—'} - {appointment?.endTime || '—'}</div>
+                </div>
+                {appointment?.reasonForVisit && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, color: '#6c757d' }}>Reason for Visit</div>
+                    <div style={{ fontWeight: 600, color: '#0d6efd' }}>{appointment.reasonForVisit}</div>
+                  </div>
+                )}
+                {appointment?.notes && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, color: '#6c757d' }}>Additional Notes</div>
+                    <div>{appointment.notes}</div>
+                  </div>
+                )}
               </div>
 
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f1f1' }}>

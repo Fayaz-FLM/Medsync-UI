@@ -2,8 +2,15 @@ import React, { useState, useEffect, useRef } from 'react'
 import * as api from '../services/api' // API helpers
 import AppointmentList from '../components/AppointmentList'
 import AppointmentReschedule from '../components/AppointmentReschedule'
+import ReasonForVisitModal from '../components/ReasonForVisitModal'
+
+import ViewDiagnosisModal from '../components/ViewDiagnosisModal'
+import DietPlanModal from '../components/DietPlanModal'
 
 export default function ReceptionistDashboard() {
+  // Loading state for initial data fetch
+  const [initialLoading, setInitialLoading] = useState(true)
+  
   // Booking state
   const [showBooking, setShowBooking] = useState(false)
   const [bookingPatientId, setBookingPatientId] = useState('')
@@ -12,6 +19,7 @@ export default function ReceptionistDashboard() {
   const [bookingStartTime, setBookingStartTime] = useState('')
   const [bookingEndTime, setBookingEndTime] = useState('')
   const [bookingNotes, setBookingNotes] = useState('')
+  const [bookingReasonForVisit, setBookingReasonForVisit] = useState('')
 
   // Patient add/edit form state
   const [showAddPatient, setShowAddPatient] = useState(false)
@@ -45,8 +53,34 @@ export default function ReceptionistDashboard() {
   const [filterDoctorId, setFilterDoctorId] = useState('')
   const [cancelDoctorId, setCancelDoctorId] = useState('')
   const [cancelPatientId, setCancelPatientId] = useState('')
-  const [showRescheduleModal, setShowRescheduleModal] = useState(false)
+  const [rescheduleModal, setRescheduleModal] = useState({ show: false, appointment: null });
+  const [dietPlanModal, setDietPlanModal] = useState({ show: false, appointment: null, loading: false });
+
+  const handleGenerateDietPlan = async (appointment) => {
+    // If diet plan already exists, just show it
+    if (appointment.dietPlan) {
+      setDietPlanModal({ show: true, appointment, loading: false });
+      return;
+    }
+
+    // Otherwise, generate it
+    setDietPlanModal({ show: true, appointment, loading: true });
+    try {
+      const updatedAppointment = await api.generateDietPlanApi(appointment.appointmentId);
+      setDietPlanModal({ show: true, appointment: updatedAppointment, loading: false });
+      // Update the appointment in the list as well
+      setAppointments(prev => prev.map(a => a.appointmentId === appointment.appointmentId ? updatedAppointment : a));
+    } catch (error) {
+      console.error('Failed to generate diet plan:', error);
+      alert('Failed to generate diet plan. Please try again.');
+      setDietPlanModal({ show: false, appointment: null, loading: false });
+    }
+  };
   const [selectedAppointmentForReschedule, setSelectedAppointmentForReschedule] = useState(null)
+  const [showReasonModal, setShowReasonModal] = useState(false)
+  const [selectedReasonAppointment, setSelectedReasonAppointment] = useState(null)
+  const [showViewDiagnosisModal, setShowViewDiagnosisModal] = useState(false)
+  const [selectedDiagnosisAppointment, setSelectedDiagnosisAppointment] = useState(null)
 
   // Rooms & Beds
   const [rooms, setRooms] = useState([])
@@ -175,16 +209,38 @@ export default function ReceptionistDashboard() {
 
   // Utility: load initial data
   useEffect(() => {
-    refreshPatients()
-    loadAppointments()
-    loadRooms()
-    loadBeds()
+    async function loadInitialData() {
+      try {
+        setInitialLoading(true)
+        await Promise.all([
+          refreshPatients(true),
+          loadAppointments(),
+          loadRooms(),
+          loadBeds()
+        ])
+      } catch (error) {
+        console.error('Error loading initial data:', error)
+      } finally {
+        setInitialLoading(false)
+      }
+    }
+    loadInitialData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Reload appointments when selectedDate changes
   useEffect(() => {
     loadAppointments()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate])
+
+  // Auto-refresh appointments every 30 seconds to catch updates from other users (like doctors cancelling)
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      loadAppointments()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(intervalId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate])
 
@@ -343,20 +399,26 @@ export default function ReceptionistDashboard() {
       // If a doctor filter is provided, fetch appointments for that doctor and date
       if (filterDoctorId && typeof api.getAppointmentsForDoctor === 'function') {
         const resp = await api.getAppointmentsForDoctor(filterDoctorId, selectedDate)
-        if (resp && resp.status === 200 && Array.isArray(resp.data)) {
+        if (resp && resp.success && Array.isArray(resp.data)) {
+          console.log('Appointments loaded (doctor filter):', resp.data)
+          console.log('First appointment reasonForVisit:', resp.data[0]?.reasonForVisit)
           setAppointments(resp.data)
         } else if (Array.isArray(resp)) {
+          console.log('Appointments loaded (doctor filter, array):', resp)
           setAppointments(resp)
         } else {
           setAppointments([])
         }
-      } else if (typeof api.getAppointmentsForAllDoctors === 'function') {
+      } else if (typeof api.getAllAppointmentsForAllDoctors === 'function') {
         // No doctor filter: fetch all doctors for selected date
-        const resp = await api.getAppointmentsForAllDoctors(selectedDate)
-        if (resp && resp.status === 200 && Array.isArray(resp.data)) {
+        const resp = await api.getAllAppointmentsForAllDoctors(selectedDate)
+        if (resp && resp.success && Array.isArray(resp.data)) {
+          console.log('Appointments loaded (all doctors):', resp.data)
+          console.log('First appointment reasonForVisit:', resp.data[0]?.reasonForVisit)
           setAppointments(resp.data)
         } else if (Array.isArray(resp)) {
           // fallback old shape
+          console.log('Appointments loaded (all doctors, array):', resp)
           setAppointments(resp)
         } else {
           setAppointments([])
@@ -364,13 +426,17 @@ export default function ReceptionistDashboard() {
       } else if (typeof api.getAppointments === 'function') {
         // fallback to older helper
         const list = await api.getAppointments()
-        if (Array.isArray(list)) setAppointments(list)
+        if (Array.isArray(list)) {
+          console.log('Appointments loaded (fallback):', list)
+          setAppointments(list)
+        }
       } else {
         // demo fallback: small delay
         await new Promise((r) => setTimeout(r, 200))
       }
     } catch (err) {
       console.warn('loadAppointments failed', err)
+      setAppointments([])
     } finally {
       setLoadingAppointments(false)
     }
@@ -383,6 +449,8 @@ export default function ReceptionistDashboard() {
     if (!bookingAppointmentDate) return alert('Please select appointment date')
     if (!bookingStartTime || !bookingEndTime) return alert('Please select start and end times')
     if (bookingStartTime >= bookingEndTime) return alert('End time must be after start time')
+    if (!bookingReasonForVisit || bookingReasonForVisit.trim() === '') return alert('Please enter reason for visit')
+    if (bookingReasonForVisit.length > 500) return alert('Reason for visit must not exceed 500 characters')
 
     const payload = {
       patientId: bookingPatientId,
@@ -390,7 +458,8 @@ export default function ReceptionistDashboard() {
       appointmentDate: bookingAppointmentDate,
       startTime: bookingStartTime,
       endTime: bookingEndTime,
-      notes: bookingNotes
+      notes: bookingNotes,
+      reasonForVisit: bookingReasonForVisit
     }
     try {
       let response = null
@@ -409,6 +478,7 @@ export default function ReceptionistDashboard() {
         setBookingStartTime('')
         setBookingEndTime('')
         setBookingNotes('')
+        setBookingReasonForVisit('')
       } else if (response && response.status === 404) {
         alert('Error: ' + (response.message || 'Appointment not found'))
       } else if (response && response.status === 409) {
@@ -423,6 +493,7 @@ export default function ReceptionistDashboard() {
         setBookingStartTime('')
         setBookingEndTime('')
         setBookingNotes('')
+        setBookingReasonForVisit('')
       } else {
         // Last resort fallback
         const created = { id: Date.now(), ...payload }
@@ -434,6 +505,7 @@ export default function ReceptionistDashboard() {
         setBookingStartTime('')
         setBookingEndTime('')
         setBookingNotes('')
+        setBookingReasonForVisit('')
       }
     } catch (err) {
       console.warn('bookAppointment failed', err)
@@ -445,6 +517,7 @@ export default function ReceptionistDashboard() {
       setBookingStartTime('')
       setBookingEndTime('')
       setBookingNotes('')
+      setBookingReasonForVisit('')
       setShowBooking(false)
     }
   }
@@ -472,6 +545,13 @@ export default function ReceptionistDashboard() {
     }
   }
 
+  function handleViewReason(appointment) {
+    console.log('View Reason clicked for appointment:', appointment)
+    console.log('Reason for visit:', appointment.reasonForVisit)
+    setSelectedReasonAppointment(appointment)
+    setShowReasonModal(true)
+  }
+
 
   /* ---------- Rooms & Beds ---------- */
   async function loadRooms() {
@@ -488,14 +568,16 @@ export default function ReceptionistDashboard() {
       if (typeof api.getBeds === 'function') {
         const b = await api.getBeds()
         if (Array.isArray(b)) {
-          // Normalize beds so frontend always sees `number`, `available`, `roomId`, `id`
-          const norm = b.map((bed, idx) => ({
-            id: bed.id || bed.bedId || `bed-${idx}`,
-            number: bed.number || bed.bedNumber,
-            available: bed.available !== undefined ? bed.available : (bed.occupied !== undefined ? !bed.occupied : true),
+          // Normalize beds: use bedNumber as the unique identifier
+          const norm = b.map((bed) => ({
+            id: bed.bedNumber,  // bedNumber is the primary key
+            number: bed.bedNumber,
+            bedNumber: bed.bedNumber,
+            available: bed.isOccupied !== undefined ? !bed.isOccupied : true,
             roomNumber: bed.roomNumber,
-            roomId: bed.roomId,
-            occupied: bed.occupied,
+            roomId: bed.roomNumber,  // roomNumber is the room's primary key
+            occupied: bed.isOccupied || false,
+            isOccupied: bed.isOccupied || false,
             history: bed.history || []
           }))
           setBeds(norm)
@@ -560,7 +642,7 @@ export default function ReceptionistDashboard() {
       "roomNumber": Number(newRoomNumber),
       "roomType": newRoomType,
       "roomCapacity": Number(newRoomCapacity),
-      "beds": newRoomBeds.map((b) => ({ "bedNumber": b.number, "isOccupied": b.available, "roomNumber": Number(newRoomNumber) }))
+      "beds": newRoomBeds.map((b) => ({ "bedNumber": b.number, "isOccupied": !b.available, "roomNumber": Number(newRoomNumber) }))
     }
     
     console.log("Payload being sent:", payload);
@@ -578,6 +660,8 @@ export default function ReceptionistDashboard() {
         }
         if (!resp) resp = { id: Date.now(), ...payload }
         setRooms((prev) => [resp, ...prev])
+        // Refresh beds list to show beds that were created with the room
+        await loadBeds()
         alert('Room added')
       }
 
@@ -655,62 +739,70 @@ export default function ReceptionistDashboard() {
     }
     
     try {
-      let updated = null
       const bedNumber = bed.number || bed.bedNumber
-      if (typeof api.assignBed === 'function') updated = await api.assignBed(Number(bedNumber), Number(patientId), 'receptionist')
-      if (!updated) {
-        // local fallback - preserve all existing bed properties including roomNumber
-        setBeds((prev) => prev.map((b) => (b.id === bed.id ? { ...b, available: false, occupied: true, patientId: Number(patientId), history: [{ action: 'assign', patientId: Number(patientId), by: 'receptionist', at: new Date().toISOString() }, ...(b.history || [])] } : b)))
-      } else {
-        // Update the bed in the beds list with the response from backend, preserving original bed info if response is incomplete
-        const normalizedUpdated = {
-          id: updated.id || bed.id,
-          number: updated.number || updated.bedNumber || bed.number,
-          bedNumber: updated.bedNumber || updated.number || bed.number,
-          roomNumber: updated.roomNumber || bed.roomNumber,
-          roomId: updated.roomId || bed.roomId,
-          available: updated.available !== undefined ? updated.available : (updated.occupied !== undefined ? !updated.occupied : false),
-          occupied: updated.occupied !== undefined ? updated.occupied : true,
-          patientId: updated.patientId || Number(patientId),
-          history: updated.history || []
-        }
-        setBeds((prev) => prev.map((b) => (b.id === bed.id || (b.number === normalizedUpdated.number && b.roomNumber === normalizedUpdated.roomNumber) ? normalizedUpdated : b)))
+      const updated = await api.assignBed(Number(bedNumber), Number(patientId))
+      
+      // Update the bed in the beds list with the response from backend
+      const normalizedUpdated = {
+        id: updated.bedNumber,
+        number: updated.bedNumber,
+        bedNumber: updated.bedNumber,
+        roomNumber: updated.roomNumber,
+        roomId: updated.roomNumber,
+        available: !updated.isOccupied,
+        occupied: updated.isOccupied,
+        isOccupied: updated.isOccupied,
+        patientId: Number(patientId),
+        history: updated.history || []
       }
-      alert('Bed assigned')
+      setBeds((prev) => prev.map((b) => (b.id === bed.id ? normalizedUpdated : b)))
+      alert('Bed assigned successfully')
+      
+      // Refresh beds to ensure UI is in sync with backend
+      await loadBeds()
     } catch (err) {
-      console.warn('assignBed failed', err)
-      alert('Unable to assign bed')
+      console.error('assignBed failed', err)
+      console.error('Error response:', err?.response)
+      const errorMsg = err?.response?.data || err?.response?.data?.message || err?.message || 'Unable to assign bed'
+      alert(`Error: ${errorMsg}`)
     }
   }
 
   async function handleVacateBed(bed) {
     if (!confirm('Vacate this bed?')) return
     try {
-      let updated = null
       const bedNumber = bed.number || bed.bedNumber
-      // Determine room number: prefer explicit roomNumber on bed, otherwise try to find via rooms list
-      const roomNumber = bed.roomNumber || bed.roomId || (rooms.find(r => Array.isArray(r.beds) && r.beds.some(rb => rb.id === bed.id)) || {}).roomNumber || (bed.roomNumber || bed.roomId)
-
-      if (typeof api.vacateBed === 'function') updated = await api.vacateBed(Number(roomNumber), Number(bedNumber), 'receptionist')
-      if (!updated) {
-        setBeds((prev) => prev.map((b) => (b.id === bed.id ? { ...b, available: true, occupied: false, history: [{ action: 'vacate', by: 'receptionist', at: new Date().toISOString() }, ...(b.history || [])] } : b)))
-      } else {
-        const normalized = {
-          id: updated.id || bed.id,
-          number: updated.number || updated.bedNumber || bed.number,
-          bedNumber: updated.bedNumber || updated.number || bed.number,
-          roomNumber: updated.roomNumber || roomNumber,
-          roomId: updated.roomId || bed.roomId,
-          available: updated.available !== undefined ? updated.available : true,
-          occupied: updated.occupied !== undefined ? updated.occupied : false,
-          history: updated.history || []
-        }
-        setBeds((prev) => prev.map((b) => (b.id === bed.id || (b.number === normalized.number && b.roomNumber === normalized.roomNumber) ? normalized : b)))
+      const roomNumber = bed.roomNumber
+      
+      if (!roomNumber) {
+        alert('Room number not found for this bed')
+        return
       }
-      alert('Bed vacated')
+
+      const updated = await api.vacateBed(Number(roomNumber), Number(bedNumber))
+      
+      // Update the bed in the beds list with the response from backend
+      const normalized = {
+        id: updated.bedNumber,
+        number: updated.bedNumber,
+        bedNumber: updated.bedNumber,
+        roomNumber: updated.roomNumber,
+        roomId: updated.roomNumber,
+        available: !updated.isOccupied,
+        occupied: updated.isOccupied,
+        isOccupied: updated.isOccupied,
+        patientId: 0,
+        history: []
+      }
+      setBeds((prev) => prev.map((b) => (b.id === bed.id ? normalized : b)))
+      alert('Bed vacated successfully')
+      
+      // Refresh beds to ensure UI is in sync with backend
+      await loadBeds()
     } catch (err) {
       console.warn('vacateBed failed', err)
-      alert('Unable to vacate bed')
+      const errorMsg = err?.response?.data?.message || err?.message || 'Unable to vacate bed'
+      alert(errorMsg)
     }
   }
 
@@ -772,6 +864,20 @@ export default function ReceptionistDashboard() {
   function startBookingForPatient(p) {
     setBookingPatientId(p.id)
     setShowBooking(true)
+  }
+
+  // Show loading spinner during initial data fetch
+  if (initialLoading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '400px' }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem' }}>
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p className="mt-3 text-muted">Loading receptionist dashboard...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -924,22 +1030,60 @@ export default function ReceptionistDashboard() {
 
               <div className="row g-2 mb-3 align-items-center">
                 <div className="col-md-7">
-                  <div className="input-group shadow-sm rounded-pill overflow-hidden" style={{ border: '1px solid #e9ecef' }}>
+                  <div 
+                    className="input-group shadow-sm rounded-pill overflow-hidden" 
+                    style={{ border: '1px solid #e9ecef' }}
+                    onKeyDown={(e) => {
+                      // Prevent Enter key from triggering any form submission
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                      }
+                    }}
+                  >
                     <span className="input-group-text bg-white border-0" style={{ borderRight: '1px solid #e9ecef' }}>🔍</span>
-                    <input className="form-control border-0" placeholder="Search by name" value={searchName} onChange={(e) => setSearchName(e.target.value)} />
-                    <input className="form-control border-0" placeholder="Patient ID" value={searchPatientId} onChange={(e) => setSearchPatientId(e.target.value)} style={{ maxWidth: '160px' }} />
-                    <button className="btn btn-primary rounded-pill ms-2" type="button" onClick={() => { /* keeps behavior reactive */ }}>Search</button>
+                    <input 
+                      className="form-control border-0" 
+                      placeholder="Search by name" 
+                      value={searchName} 
+                      onChange={(e) => setSearchName(e.target.value)}
+                      autoComplete="off"
+                      type="text"
+                      name="patient-search-name"
+                    />
+                    <input 
+                      className="form-control border-0" 
+                      placeholder="Patient ID" 
+                      value={searchPatientId} 
+                      onChange={(e) => setSearchPatientId(e.target.value)} 
+                      style={{ maxWidth: '160px' }}
+                      autoComplete="off"
+                      type="text"
+                      name="patient-search-id"
+                    />
                   </div>
                 </div>
 
                 <div className="col-md-3 d-flex gap-2">
-                  <select className="form-select" value={filterGender} onChange={(e) => setFilterGender(e.target.value)} style={{ maxWidth: '140px' }}>
+                  <select 
+                    className="form-select" 
+                    value={filterGender} 
+                    onChange={(e) => setFilterGender(e.target.value)} 
+                    style={{ maxWidth: '140px' }}
+                    autoComplete="off"
+                  >
                     <option value="">All genders</option>
                     <option value="male">Male</option>
                     <option value="female">Female</option>
                     <option value="other">Other</option>
                   </select>
-                  <input className="form-control" placeholder="City" value={filterCity} onChange={(e) => setFilterCity(e.target.value)} />
+                  <input 
+                    className="form-control" 
+                    placeholder="City" 
+                    value={filterCity} 
+                    onChange={(e) => setFilterCity(e.target.value)}
+                    autoComplete="off"
+                    type="text"
+                  />
                 </div>
 
                 <div className="col-md-2 d-flex flex-column align-items-end justify-content-center">
@@ -1008,8 +1152,26 @@ export default function ReceptionistDashboard() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label">Notes</label>
-                  <textarea className="form-control" value={bookingNotes} onChange={(e) => setBookingNotes(e.target.value)} rows={3}></textarea>
+                  <label className="form-label">
+                    Reason for Visit <span className="text-danger">*</span>
+                  </label>
+                  <textarea
+                    className="form-control"
+                    value={bookingReasonForVisit}
+                    onChange={(e) => setBookingReasonForVisit(e.target.value)}
+                    rows={3}
+                    placeholder="e.g., Fever and cough for 3 days, Follow-up for diabetes, Annual checkup"
+                    required
+                    maxLength={500}
+                  ></textarea>
+                  <small className="form-text text-muted">
+                    {bookingReasonForVisit.length}/500 characters
+                  </small>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">Additional Notes (Optional)</label>
+                  <textarea className="form-control" value={bookingNotes} onChange={(e) => setBookingNotes(e.target.value)} rows={2} placeholder="Any additional information for internal use"></textarea>
                 </div> 
 
                 <div className="d-flex gap-2">
@@ -1021,20 +1183,61 @@ export default function ReceptionistDashboard() {
           </div>
         )}
 
+        {/* Recently Diagnosed Appointments section */}
+        {appointments.some(a => a.status === 'DIAGNOSED') && (
+          <div className="card mb-3 border-primary shadow-sm">
+            <div className="card-body">
+              <h5 className="card-title text-primary"><i className="bi bi-clipboard-check me-2"></i>Recently Diagnosed Appointments</h5>
+              <div className="table-responsive" style={{ maxHeight: 200 }}>
+                <table className="table table-hover align-middle">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Time</th>
+                      <th>Patient</th>
+                      <th>Doctor</th>
+                      <th className="text-end">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {appointments.filter(a => a.status === 'DIAGNOSED').map(a => (
+                      <tr key={a.appointmentId || a.id}>
+                        <td>{a.startTime} - {a.endTime}</td>
+                        <td>{a.patientName} <small className="text-muted">({a.patientId})</small></td>
+                        <td>{a.doctorId}</td>
+                        <td className="text-end">
+                          <button 
+                            className="btn btn-sm btn-primary"
+                            onClick={() => {
+                              setSelectedDiagnosisAppointment(a);
+                              setShowViewDiagnosisModal(true);
+                            }}
+                          >
+                            View Diagnosis
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Appointments list */}
         <div className="card mb-3">
           <div className="card-body">
-            <h5 className="card-title">Upcoming appointments</h5>
-            <div className="mb-3 d-flex gap-2 align-items-end">
+            <h5 className="card-title">Appointments</h5>
+            <div className="mb-3 d-flex gap-3 align-items-end">
               <div style={{ maxWidth: 200 }}>
                 <label className="form-label mb-1">Select date</label>
                 <input type="date" className="form-control" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
               </div>
-              <div style={{ maxWidth: 240 }} className="ms-3">
+              <div style={{ maxWidth: 240 }}>
                 <label className="form-label mb-1">Doctor ID (optional)</label>
                 <input className="form-control" placeholder="Enter doctor id" value={filterDoctorId} onChange={(e) => setFilterDoctorId(e.target.value)} />
               </div>
-              <div className="ms-2" style={{ alignSelf: 'flex-end' }}>
+              <div style={{ alignSelf: 'flex-end' }}>
                 <button className="btn btn-outline-secondary" onClick={loadAppointments}>Refresh</button>
               </div>
             </div>
@@ -1043,22 +1246,28 @@ export default function ReceptionistDashboard() {
                 <AppointmentList
                   appointments={appointments}
                   loading={loadingAppointments}
+                  onViewReason={(a) => handleViewReason(a)}
                   onView={async (a) => {
                     try {
-                      const id = a.patientId || a.id
-                      const resp = await api.getAppointmentDetails(id)
-                      if (resp && resp.status === 200 && resp.data) {
+                      setLoadingPatients(true)
+                      const patientId = a.patientId
+                      if (!patientId && patientId !== 0) {
+                        alert('Patient ID not found for this appointment')
+                        return
+                      }
+                      const resp = await api.getPatientById(patientId)
+                      if (resp && resp.success && resp.data) {
                         setSelectedPatient(resp.data)
                         setSelectedPatientEditable(false)
                         setShowPatientDetails(true)
-                      } else if (resp && resp.status === 404) {
-                        alert('Error: ' + (resp.message || 'Appointment not found'))
                       } else {
-                        alert('Unable to fetch appointment details')
+                        alert(resp.message || 'Unable to fetch patient details')
                       }
                     } catch (err) {
-                      console.warn('view appointment failed', err)
-                      alert('Unable to fetch appointment details')
+                      console.warn('view patient details failed', err)
+                      alert('Unable to fetch patient details')
+                    } finally {
+                      setLoadingPatients(false)
                     }
                   }}
                   onReschedule={(a) => {
@@ -1066,6 +1275,7 @@ export default function ReceptionistDashboard() {
                     setShowRescheduleModal(true)
                   }}
                   onCancel={(id) => handleCancelAppointment(id)}
+                  onGenerateDietPlan={handleGenerateDietPlan}
                   emptyMessage={'No upcoming appointments for this date.'}
                 />
             </div>
@@ -1303,7 +1513,7 @@ export default function ReceptionistDashboard() {
       </div>
 
       {/* Appointment Reschedule Modal */}
-      {showRescheduleModal && selectedAppointmentForReschedule && (
+      {rescheduleModal.show && selectedAppointmentForReschedule && (
         <AppointmentReschedule
           appointment={selectedAppointmentForReschedule}
           onClose={() => {
@@ -1324,6 +1534,33 @@ export default function ReceptionistDashboard() {
           }}
         />
       )}
+
+      {/* Reason for Visit Modal */}
+      <ReasonForVisitModal 
+        appointment={selectedReasonAppointment} 
+        onClose={() => {
+          setShowReasonModal(false);
+          setSelectedReasonAppointment(null);
+        }} 
+      />
+
+      {/* View Diagnosis Modal */}
+      {showViewDiagnosisModal && selectedDiagnosisAppointment && (
+        <ViewDiagnosisModal
+          appointment={selectedDiagnosisAppointment}
+          onClose={() => {
+            setShowViewDiagnosisModal(false);
+            setSelectedDiagnosisAppointment(null);
+          }}
+        />
+      )}
+      <DietPlanModal 
+        show={dietPlanModal.show}
+        onHide={() => setDietPlanModal({ ...dietPlanModal, show: false })}
+        dietPlan={dietPlanModal.appointment?.dietPlan}
+        loading={dietPlanModal.loading}
+        onGenerate={() => handleGenerateDietPlan(dietPlanModal.appointment)}
+      />
     </div>
   )
 }

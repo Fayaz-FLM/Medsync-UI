@@ -20,10 +20,21 @@ export default function AppointmentManagement({ doctors = [] }) {
   const [patientsVisited, setPatientsVisited] = useState([])
   const [pvStartDate, setPvStartDate] = useState(new Date().toISOString().split('T')[0])
   const [pvEndDate, setPvEndDate] = useState(new Date().toISOString().split('T')[0])
+  const [lastRefresh, setLastRefresh] = useState(null)
   const mainRef = useRef(null)
 
   useEffect(() => {
     loadAppointments()
+  }, [selectedDate])
+
+  // Auto-refresh appointments every 30 seconds to catch updates from doctors
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      loadAppointments()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(intervalId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate])
 
   async function loadAppointments() {
@@ -38,6 +49,7 @@ export default function AppointmentManagement({ doctors = [] }) {
       } else {
         setAppointments([])
       }
+      setLastRefresh(new Date())
     } catch (err) {
       setError(err.message || 'Failed to load appointments')
       setAppointments([])
@@ -109,8 +121,8 @@ export default function AppointmentManagement({ doctors = [] }) {
     console.log('Viewing appointment');
     try {
       setError('')
-      const id = a.patientId;
-      const resp = await api.getAppointmentDetails(id)
+      const appointmentId = a.appointmentId || a.id;
+      const resp = await api.getAppointmentDetails(appointmentId)
       if (resp && resp.status === 200 && resp.data) {
         setSelectedAppointment(resp.data)
         setShowRescheduleModal(false)
@@ -180,6 +192,11 @@ export default function AppointmentManagement({ doctors = [] }) {
                 <button className="btn btn-outline-secondary" onClick={loadAppointments}>
                   Refresh
                 </button>
+                {lastRefresh && (
+                  <small className="text-muted ms-2">
+                    Last updated: {lastRefresh.toLocaleTimeString()}
+                  </small>
+                )}
               </div>
             </div>
             <div className="col-md-6 text-md-end">
@@ -214,12 +231,19 @@ export default function AppointmentManagement({ doctors = [] }) {
             )}
           </div>
           <div className="mb-3">
-            <input
+            <input 
               type="text"
               className="form-control"
               placeholder="Search by patient/doctor name or ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              autoComplete="off"
+              name="appointment-search"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                }
+              }}
             />
           </div>
 
