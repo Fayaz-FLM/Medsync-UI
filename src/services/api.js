@@ -222,6 +222,19 @@ export async function getAppointmentsForDoctor(doctorId, date) {
 
 export async function getAppointmentsForAllDoctors(date) {
   try {
+    // Validate date format (YYYY-MM-DD)
+    if (!date || typeof date !== 'string') {
+      throw new Error('Invalid date parameter');
+    }
+    
+    // Ensure date is in YYYY-MM-DD format
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(date)) {
+      console.error('Invalid date format:', date);
+      throw new Error(`Invalid date format: ${date}. Expected YYYY-MM-DD`);
+    }
+    
+    console.log('Fetching appointments for date:', date);
     const response = await axiosInstance.get(`/appointments/${date}`);
     return {
       data: response.data,
@@ -229,11 +242,22 @@ export async function getAppointmentsForAllDoctors(date) {
       success: true
     };
   } catch (err) {
-    console.warn('getAppointmentsForAllDoctors failed', err);
+    console.error('getAppointmentsForAllDoctors failed:', err);
     const status = err.response?.status;
     const errorMsg = err.response?.data || err.message;
+    
+    // 404 means no appointments found - return empty array, not an error
+    if (status === 404) {
+      return {
+        data: [],
+        status: 404,
+        success: true,
+        message: 'No appointments found for this date'
+      };
+    }
+    
     return {
-      data: null,
+      data: [],
       status: status || 500,
       success: false,
       message: errorMsg || 'Failed to fetch appointments for date'
@@ -247,10 +271,12 @@ export const getAllAppointmentsForAllDoctors = getAppointmentsForAllDoctors;
 export async function generateDietPlanApi(appointmentId) {
   try {
     const response = await axiosInstance.post(`/appointments/generateDietPlan/${appointmentId}`);
+    // Return the diet plan string directly
     return response.data;
   } catch (err) {
-    console.warn('generateDietPlanApi failed', err);
-    throw err;
+    console.error('generateDietPlanApi failed:', err);
+    const errorMsg = err.response?.data?.message || err.response?.data || err.message || 'Failed to generate diet plan';
+    throw new Error(errorMsg);
   }
 }
 

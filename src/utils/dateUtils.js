@@ -29,13 +29,38 @@ export function formatDateToISO(displayDate) {
  */
 export function formatDateWithDay(isoDate) {
   if (!isoDate) return ''
+  
+  // Validate format: must be YYYY-MM-DD
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+  if (!dateRegex.test(isoDate)) {
+    console.warn('Invalid date format:', isoDate)
+    return isoDate // Return as-is if invalid
+  }
+  
   const [year, month, day] = isoDate.split('-')
-  const dateObj = new Date(year, month - 1, day)
+  
+  // Validate year is reasonable (between 1900 and 2100)
+  const yearNum = parseInt(year, 10)
+  if (yearNum < 1900 || yearNum > 2100) {
+    console.warn('Invalid year:', year)
+    return isoDate
+  }
+  
+  // Create date object - use UTC to avoid timezone issues
+  const dateObj = new Date(Date.UTC(yearNum, parseInt(month, 10) - 1, parseInt(day, 10)))
+  
+  // Check if date is valid
+  if (isNaN(dateObj.getTime())) {
+    console.warn('Invalid date:', isoDate)
+    return isoDate
+  }
+  
   return dateObj.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
-    year: 'numeric'
+    year: 'numeric',
+    timeZone: 'UTC'
   })
 }
 

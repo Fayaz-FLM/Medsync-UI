@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import * as api from '../services/api'
+import * as api from '../../../services/api'
 
 export default function ForceResetPassword() {
   const navigate = useNavigate()
